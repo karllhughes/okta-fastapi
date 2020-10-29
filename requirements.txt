@@ -1,0 +1,4 @@
+uvicorn
+fastapi
+httpx
+okta_jwt
