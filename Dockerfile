@@ -1,10 +1,9 @@
 FROM tiangolo/uvicorn-gunicorn-fastapi:python3.8
 
-# copy the dependencies and .env file
+# Copy the files into the Docker image
 COPY requirements.txt /app/requirements.txt
+COPY ./.env /app/.env
+COPY ./main.py /app/main.py
 
-# install dependencies
+# Install dependencies
 RUN pip install -r requirements.txt
-
-# Copy code
-COPY ./app /app

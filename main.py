@@ -1,3 +1,5 @@
+from typing import List
+from pydantic import BaseModel
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.security import OAuth2PasswordBearer
 import httpx
@@ -5,14 +7,19 @@ from starlette.config import Config
 from okta_jwt.jwt import validate_token as validate_locally
 
 
-config = Config(".env")
+config = Config('.env')
 
 app = FastAPI()
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl='token')
 
 
-def retrieve_token(authorization):
+class Item(BaseModel):
+    id: int
+    name: str
+
+
+def retrieve_token(authorization, issuer):
     headers = {
         'accept': 'application/json',
         'authorization': authorization,
@@ -23,7 +30,7 @@ def retrieve_token(authorization):
         'grant_type': 'client_credentials',
         'scope': 'items',
     }
-    url = config('OKTA_ISSUER') + '/v1/token'
+    url = issuer + '/v1/token'
 
     response = httpx.post(url, headers=headers, data=data)
 
@@ -33,18 +40,18 @@ def retrieve_token(authorization):
         raise HTTPException(status_code=400, detail=response.text)
 
 
-def validate_remotely(token):
+def validate_remotely(token, issuer, clientId, clientSecret):
     headers = {
         'accept': 'application/json',
         'cache-control': 'no-cache',
         'content-type': 'application/x-www-form-urlencoded',
     }
     data = {
-        'client_id': config('OKTA_CLIENT_ID'),
-        'client_secret': config('OKTA_CLIENT_SECRET'),
-        'token': token
+        'client_id': clientId,
+        'client_secret': clientSecret,
+        'token': token,
     }
-    url = config('OKTA_ISSUER') + '/v1/introspect'
+    url = issuer + '/v1/introspect'
 
     response = httpx.post(url, headers=headers, data=data)
 
@@ -54,34 +61,40 @@ def validate_remotely(token):
         raise HTTPException(status_code=400, detail=response.text)
 
 
-def validate(token):
-    # return validate_remotely(token)
+def validate(token: str = Depends(oauth2_scheme)):
+    # Remote validation
+    return validate_remotely(
+        token,
+        config('OKTA_ISSUER'),
+        config('OKTA_CLIENT_ID'),
+        config('OKTA_CLIENT_SECRET')
+    )
+    # Local validation
     return validate_locally(
-      token,
-      config('OKTA_ISSUER'),
-      config('OKTA_AUDIENCE'),
-      config('OKTA_CLIENT_ID')
+        token,
+        config('OKTA_ISSUER'),
+        config('OKTA_AUDIENCE'),
+        config('OKTA_CLIENT_ID')
     )
 
 
 # Open, Hello World route
-@app.get("/")
+@app.get('/')
 def read_root():
-    return {"Hello": "World"}
+    return {'Hello': 'World'}
 
 
 # Get auth token
-@app.post("/token")
+@app.post('/token')
 def login(request: Request):
-    return retrieve_token(request.headers['authorization'])
+    return retrieve_token(request.headers['authorization'], config('OKTA_ISSUER'))
 
 
 # Protected, get items route
-@app.get("/items")
-def read_items(token: str = Depends(oauth2_scheme)):
-    if validate(token):
-        return [
-            {"id": 1, "name": "red ball"},
-            {"id": 2, "name": "blue square"},
-            {"id": 3, "name": "purple ellipse"},
-        ]
+@app.get('/items', response_model=List[Item])
+def read_items(valid: bool = Depends(validate)):
+    return [
+        {'id': 1, 'name': 'red ball'},
+        {'id': 2, 'name': 'blue square'},
+        {'id': 3, 'name': 'purple ellipse'},
+    ]
