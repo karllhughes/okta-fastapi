@@ -79,17 +79,16 @@ def validate(token: str = Depends(oauth2_scheme)):
     # )
 
     # Local validation
-    res = validate_locally(
-        token,
-        config('OKTA_ISSUER'),
-        config('OKTA_AUDIENCE'),
-        config('OKTA_CLIENT_ID')
-    )
-
-    if res:
-        return True
-    else:
-        raise HTTPException(status_code=400)
+    try:
+        res = validate_locally(
+            token,
+            config('OKTA_ISSUER'),
+            config('OKTA_AUDIENCE'),
+            config('OKTA_CLIENT_ID')
+        )
+        return bool(res)
+    except Exception:
+        raise HTTPException(status_code=403)
 
 
 class Item(BaseModel):
